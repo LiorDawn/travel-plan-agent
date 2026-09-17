@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>旅游规划 Agent</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#f0f2f5; height:100vh; display:flex; overflow:hidden; }
+/* === 左边栏 - 会话管理 === */
+.sidebar-left { width:260px; background:#1a1a2e; color:#fff; display:flex; flex-direction:column; flex-shrink:0; }
+.sidebar-left .header { padding:20px; border-bottom:1px solid #2d2d4a; }
+.sidebar-left .header h2 { font-size:17px; margin-bottom:4px; }
+.sidebar-left .header .hint { font-size:11px; color:#8892b0; }
+.sidebar-left .toolbar { padding:12px 16px; display:flex; gap:8px; border-bottom:1px solid #2d2d4a; }
+.sidebar-left .toolbar button { flex:1; padding:8px 0; border:none; border-radius:6px; font-size:12px; cursor:pointer; color:#fff; }
+.btn-new { background:#2563eb; }
+.btn-new:hover { background:#1d4ed8; }
+.btn-file { background:#16a34a; }
+.btn-file:hover { background:#15803d; }
+.btn-clear { background:#dc2626; }
+.btn-clear:hover { background:#b91c1c; }
+.conv-list { flex:1; overflow-y:auto; padding:8px; }
+.conv-item { padding:12px 14px; margin-bottom:4px; border-radius:8px; cursor:pointer; transition:background 0.2s; display:flex; justify-content:space-between; align-items:center; }
+.conv-item:hover { background:#2d2d4a; }
+.conv-item.active { background:#2563eb; }
+.conv-item .info { flex:1; overflow:hidden; }
+.conv-item .title { font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.conv-item .time { font-size:10px; color:#8892b0; margin-top:2px; }
+.conv-item.active .time { color:#93c5fd; }
+.conv-item .actions { display:none; gap:4px; }
+.conv-item:hover .actions, .conv-item.active .actions { display:flex; }
+.conv-item .actions button { background:none; border:none; color:#8892b0; cursor:pointer; font-size:11px; padding:2px 6px; border-radius:4px; }
+.conv-item .actions button:hover { background:rgba(255,255,255,0.15); color:#fff; }
+.conv-item.active .actions button { color:#bfdbfe; }
+/* === 中间 - 聊天 === */
+.main { flex:1; display:flex; flex-direction:column; min-width:0; }
+.main-header { background:#fff; padding:14px 24px; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center; }
+.main-header h1 { font-size:18px; color:#1a1a2e; }
+.main-header .conv-title { font-size:13px; color:#6b7280; }
+.messages { flex:1; overflow-y:auto; padding:24px; }
+.message { margin-bottom:16px; display:flex; }
+.message.user { justify-content:flex-end; }
+.message .bubble { max-width:70%; padding:12px 16px; border-radius:12px; line-height:1.6; font-size:14px; }
+.message.user .bubble { background:#2563eb; color:#fff; }
+.message.assistant .bubble { background:#fff; color:#333; box-shadow:0 1px 3px rgba(0,0,0,0.08); }
+.message.system .bubble { background:#fef3c7; color:#92400e; font-size:12px; max-width:90%; }
+.message .bubble h3 { margin-bottom:6px; font-size:15px; }
+.message .bubble ul { padding-left:18px; margin:6px 0; }
+.message .bubble li { margin:3px 0; }
+.message .bubble hr { margin:10px 0; border:0; border-top:1px solid #e5e7eb; }
+.message .bubble p { margin:4px 0; }
+.message .bubble .chart-card { margin:6px 0; }
+.message .bubble .chart-title { font-weight:600; color:#1a1a2e; font-size:13px; margin-bottom:8px; }
+.message .bubble .chart-bars { display:flex; align-items:flex-end; gap:10px; height:180px; padding:0 4px; }
+.message .bubble .chart-col { flex:1; display:flex; flex-direction:column; align-items:center; height:100%; }
+.message .bubble .chart-bar { flex:1; width:100%; display:flex; align-items:flex-end; justify-content:center; }
+.message .bubble .chart-fill { width:70%; background:linear-gradient(180deg,#60a5fa,#2563eb); border-radius:6px 6px 0 0; position:relative; min-height:3px; transition:height 0.4s ease; }
+.message .bubble .chart-val { position:absolute; top:-18px; left:50%; transform:translateX(-50%); font-size:10px; color:#2563eb; font-weight:600; white-space:nowrap; }
+.message .bubble .chart-col-label { font-size:10px; color:#6b7280; margin-top:6px; white-space:nowrap; }
+.message .bubble .chart-labels { display:flex; margin-top:6px; }
+.message .bubble .chart-labels span { text-align:center; font-size:10px; color:#6b7280; }
+.input-area { background:#fff; padding:14px 24px; border-top:1px solid #e5e7eb; display:flex; gap:10px; }
+.input-area input { flex:1; padding:11px 16px; border:1px solid #d1d5db; border-radius:8px; font-size:14px; outline:none; }
+.input-area input:focus { border-color:#2563eb; }
+.input-area button { padding:11px 22px; border:none; border-radius:8px; cursor:pointer; font-size:14px; }
+.btn-send { background:#2563eb; color:#fff; }
+.btn-send:hover { background:#1d4ed8; }
+.btn-send:disabled { background:#93c5fd; cursor:not-allowed; }
+.btn-stop { background:#dc2626; color:#fff; display:none; }
+.btn-stop:hover { background:#b91c1c; }
+.btn-stop.show { display:inline-block; }
+
+
+/* === 右边栏 - 监控 === */
+.sidebar-right { width:240px; background:#fff; border-left:1px solid #e5e7eb; display:flex; flex-direction:column; flex-shrink:0; }
+.panel { padding:16px; border-bottom:1px solid #f3f4f6; }
+.panel h3 { font-size:13px; color:#6b7280; margin-bottom:12px; text-transform:uppercase; letter-spacing:0.5px; }
+.metric { display:flex; justify-content:space-between; padding:6px 0; font-size:13px; }
+.metric .label { color:#6b7280; }
+.metric .value { color:#111827; font-weight:600; }
+.metric .value.green { color:#059669; }
+.metric .value.blue { color:#2563eb; }
+.event-log { flex:1; overflow-y:auto; padding:16px; }
+.event-log h3 { font-size:13px; color:#6b7280; margin-bottom:12px; text-transform:uppercase; }
+.event-item { background:#f9fafb; border-radius:6px; padding:8px 10px; margin-bottom:6px; font-size:11px; }
+.event-item .type { color:#2563eb; font-weight:600; }
+.event-item .time { color:#9ca3af; }
+.event-item .data { color:#6b7280; margin-top:3px; word-break:break-all; max-height:60px; overflow-y:auto; }
+/* === 弹窗 === */
+.modal-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; justify-content:center; align-items:center; }
+.modal-overlay.show { display:flex; }
+.modal { background:#fff; border-radius:16px; padding:32px; width:460px; max-width:90vw; box-shadow:0 20px 60px rgba(0,0,0,0.2); animation:slideUp 0.3s ease; }
+@keyframes slideUp { from { transform:translateY(30px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+.modal h3 { font-size:18px; margin-bottom:6px; color:#1a1a2e; }
+.modal .hint { color:#6b7280; font-size:13px; margin-bottom:20px; }
+.modal .field { margin-bottom:16px; }
+.modal .field label { display:block; font-size:13px; font-weight:600; color:#374151; margin-bottom:4px; }
+.modal .field .field-hint { font-size:11px; color:#9ca3af; }
+.modal .field input { width:100%; padding:10px 14px; border:1px solid #d1d5db; border-radius:8px; font-size:14px; outline:none; }
+.modal .field input:focus { border-color:#2563eb; box-shadow:0 0 0 3px rgba(37,99,235,0.1); }
+.modal .actions { display:flex; gap:12px; margin-top:24px; justify-content:flex-end; }
+.modal .actions button { padding:10px 24px; border-radius:8px; font-size:14px; cursor:pointer; border:none; }
+.btn-cancel { background:#f3f4f6; color:#374151; }
+.btn-cancel:hover { background:#e5e7eb; }
+.btn-submit { background:#2563eb; color:#fff; }
+.btn-submit:hover { background:#1d4ed8; }
+/* === 澄清式需求确认弹窗（travel 前融合缺参+偏好，最多 2 轮）=== */
+.clarify-question { padding:14px 16px; background:#f9fafb; border-radius:10px; margin-bottom:12px; border:1px solid #eef0f3; }
+.clarify-question .q-title { font-size:14px; font-weight:600; color:#1a1a2e; margin-bottom:10px; }
+.clarify-question .q-title .q-required { color:#dc2626; margin-left:4px; }
+.clarify-question .q-options { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+.clarify-question .q-option label { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border:1px solid #d1d5db; border-radius:20px; font-size:13px; cursor:pointer; color:#374151; transition:all .15s; }
+.clarify-question .q-option input { accent-color:#2563eb; }
+.clarify-question .q-option label:hover { border-color:#2563eb; background:#eff6ff; }
+.clarify-question .q-option input:checked + span { color:#2563eb; }
+.clarify-question .q-free { width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:13px; outline:none; box-sizing:border-box; }
+.clarify-question .q-free:focus { border-color:#2563eb; box-shadow:0 0 0 3px rgba(37,99,235,0.08); }
+.clarify-question .q-note { font-size:11px; color:#9ca3af; margin-top:6px; }
+/* === 文件管理弹窗 === */
+.file-modal { max-height:70vh; overflow-y:auto; }
+.file-modal .file-item { display:flex; justify-content:space-between; align-items:center; padding:14px 0; border-bottom:1px solid #f3f4f6; }
+.file-modal .file-item:last-child { border-bottom:none; }
+.file-modal .file-info { flex:1; }
+.file-modal .file-title { font-size:14px; font-weight:600; color:#1a1a2e; }
+.file-modal .file-meta { font-size:11px; color:#9ca3af; margin-top:2px; }
+.file-modal .file-actions { display:flex; gap:8px; }
+.file-modal .file-actions button { padding:6px 12px; border-radius:6px; border:none; font-size:12px; cursor:pointer; }
+.btn-preview { background:#eef2ff; color:#4338ca; }
+.btn-preview:hover { background:#e0e7ff; }
+.btn-delete { background:#fef2f2; color:#dc2626; }
+.btn-delete:hover { background:#fee2e2; }
+.file-modal .empty { text-align:center; padding:40px; color:#9ca3af; font-size:14px; }
+</style>
+</head>
+<body>
+
+<!-- ===== 左边栏 - 会话管理 ===== -->
+<div class="sidebar-left">
+  <div class="header"><h2>Travel Agent</h2><div class="hint">智能旅游规划助手</div></div>
+  <div class="toolbar">
+    <button class="btn-new" onclick="newConversation()">+ 新建</button>
+    <button class="btn-file" onclick="openFileManager()">文件</button>
+    <button class="btn-clear" onclick="clearAll()">清除</button>
+  </div>
+  <div class="conv-list" id="convList"></div>
+</div>
+
+<!-- ===== 中间 - 聊天区 ===== -->
+<div class="main">
+  <div class="main-header">
+    <h1>旅游规划助手</h1>
+    <div class="conv-title" id="convTitle"></div>
+  </div>
+  <div class="messages" id="messages">
+    <div class="message assistant">
+      <div class="bubble">你好！我是旅游规划助手。告诉我你想去哪里，我帮你规划行程。例如："帮我规划下周去三亚的出差"</div>
+    </div>
+  </div>
+  <div class="input-area">
+    <input id="userInput" placeholder="输入你的旅行需求..." onkeydown="if(event.key==='Enter')sendMessage()">
+    <button id="sendBtn" class="btn-send" onclick="sendMessage()">发送</button>
+    <button id="stopBtn" class="btn-stop" onclick="stopRequest()">停止</button>
+  </div>
+</div>
+
+<!-- ===== 右边栏 - 监控 ===== -->
+<div class="sidebar-right">
+  <div class="panel">
+    <h3>模型信息</h3>
+    <div class="metric"><span class="label">提供商</span><span class="value blue" id="monProvider">Ollama</span></div>
+    <div class="metric"><span class="label">模型</span><span class="value" id="monModel">-</span></div>
+    <div class="metric"><span class="label">API</span><span class="value" id="monUrl" style="font-size:10px">-</span></div>
+  </div>
+  <div class="panel">
+    <h3>Token 用量</h3>
+    <div class="metric"><span class="label">调用次数</span><span class="value" id="monCalls">0</span></div>
+    <div class="metric"><span class="label">输入 Token</span><span class="value" id="monInput">0</span></div>
+    <div class="metric"><span class="label">输出 Token</span><span class="value" id="monOutput">0</span></div>
+    <div class="metric"><span class="label">总 Token</span><span class="value green" id="monTotal">0</span></div>
+  </div>
+  <div class="event-log" id="eventLog"><h3>事件日志</h3></div>
+</div>
+
+<!-- ===== 参数填写弹窗 ===== -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h3>请补充以下信息</h3>
+    <div class="hint" id="modalHint">检测到以下参数缺失，请填写后继续</div>
+    <div id="modalFields"></div>
+    <div class="actions">
+      <button class="btn-cancel" onclick="closeModal()">取消</button>
+      <button class="btn-submit" onclick="submitModal()">确认并继续</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 澄清式需求确认弹窗（travel 前融合缺参+偏好）===== -->
+<div class="modal-overlay" id="clarifyModal">
+  <div class="modal">
+    <h3 id="clarifyTitle">确认几个需求</h3>
+    <div class="hint" id="clarifyHint">为更好地规划，请确认以下问题（可点选建议或自由输入）</div>
+    <div id="clarifyQuestions"></div>
+    <div class="actions">
+      <button class="btn-cancel" onclick="closeClarifyModal()">取消</button>
+      <button class="btn-submit" onclick="submitClarify()">确认并继续</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 文件管理弹窗 ===== -->
+<div class="modal-overlay" id="fileModal">
+  <div class="modal" style="width:600px">
+    <h3>文件管理</h3>
+    <div class="hint">管理 Agent 生成的旅游方案文件</div>
+    <div class="file-modal" id="fileList"></div>
+    <div class="actions">
+      <button class="btn-cancel" onclick="closeFileModal()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 删除确认弹窗 ===== -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal" style="width:400px">
+    <h3>确认删除</h3>
+    <div class="hint" id="confirmHint">确定要删除「...」吗？此操作不可恢复。</div>
+    <div class="actions">
+      <button class="btn-cancel" onclick="closeConfirm()">取消</button>
+      <button class="btn-clear" id="confirmOkBtn" onclick="doDeleteConfirmed()">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 名称输入弹窗（新建/重命名）===== -->
+<div class="modal-overlay" id="nameModal">
+  <div class="modal" style="width:400px">
+    <h3 id="nameModalTitle">会话名称</h3>
+    <div class="hint">请输入名称</div>
+    <input id="nameInput" type="text" placeholder="会话名称" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:14px;box-sizing:border-box;" />
+    <div class="actions">
+      <button class="btn-cancel" onclick="closeNameModal()">取消</button>
+      <button class="btn-submit" onclick="submitNameModal()">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 名称输入弹窗（新建/重命名）===== -->
+<script>
+var messages = document.getElementById('messages');
+var eventLog = document.getElementById('eventLog');
+var userInput = document.getElementById('userInput');
+var sendBtn = document.getElementById('sendBtn');
+var stopBtn = document.getElementById('stopBtn');
+var abortCtrl = null;
+var modal = document.getElementById('modal');
+var clarifyModal = document.getElementById('clarifyModal');
+var isProcessing = false;
+var currentConvId = '';
+var pendingResume = false;
+var pendingClarifyQuestions = null;   // 当前澄清弹窗的问题列表（供 submit 收集）
+var pendingClarifyPayload = null;     // 待发送的澄清 resume 载荷（JSON 字符串）
+var monitorTimer = null;
+var pendingDeleteConv = null;
+var pendingRenameConv = null;
+var nameAction = null; // 'create' | 'rename'
+
+// ===== 会话管理 =====
+async function loadConversations() {
+  try {
+    var r = await fetch('/api/v1/conversations?user_id=demo');
+    var convs = await r.json();
+    renderConvList(convs);
+  } catch(e) {}
+}
+
+function renderConvList(convs) {
+  var html = '';
+  convs.forEach(function(c) {
+    var active = c.id === currentConvId ? ' active' : '';
+    var title = c.title || '新对话';
+    var time = (c.updated_at || c.created_at || '').substring(0, 16);
+    html += '<div class="conv-item' + active + '" onclick="switchConversation(\'' + c.id + '\',\'' + escapeHtml(title) + '\')">';
+    html += '<div class="info"><div class="title">' + escapeHtml(title) + '</div><div class="time">' + time + '</div></div>';
+    html += '<div class="actions"><button onclick="event.stopPropagation();renameConv(\'' + c.id + '\')">重命名</button><button onclick="event.stopPropagation();deleteConv(\'' + c.id + '\')">删除</button></div>';
+    html += '</div>';
+  });
+  document.getElementById('convList').innerHTML = html || '<div style="color:#8892b0;font-size:12px;padding:20px;text-align:center">暂无会话</div>';
+}
+
+async function newConversation() {
+  if (isProcessing) return;
+  try {
+    var r = await fetch('/api/v1/conversations?user_id=demo&title=新对话', { method: 'POST' });
+    var data = await r.json();
+    currentConvId = data.id;
+    document.getElementById('convTitle').textContent = data.title;
+    document.getElementById('messages').innerHTML = '';
+    loadConversations();
+  } catch(e) { alert('新建失败: ' + e); }
+}
+
+async function switchConversation(id, title) {
+  currentConvId = id;
+  pendingResume = false;
+  document.getElementById('convTitle').textContent = title || '';
+  document.getElementById('messages').innerHTML = '<div class="message assistant"><div class="bubble">加载中...</div></div>';
+  loadConversations();
+  try {
+    var r = await fetch('/api/v1/conversations/' + id + '/messages');
+    var msgs = await r.json();
+    document.getElementById('messages').innerHTML = '';
+    msgs.forEach(function(m) {
+      addMessage(m.role, m.content, false);
+    });
+    if (!msgs.length) document.getElementById('messages').innerHTML = '<div class="message assistant"><div class="bubble">已切换到: ' + (title || id) + '（暂无消息）</div></div>';
+  } catch(e) {
+    document.getElementById('messages').innerHTML = '<div class="message assistant"><div class="bubble">已切换到: ' + (title || id) + '</div></div>';
+  }
+}
+
+async function renameConv(id) {
+  nameAction = 'rename';
+  pendingRenameConv = id;
+  var convItems = document.getElementById('convList').children;
+  var title = '';
+  for (var i = 0; i < convItems.length; i++) {
+    var t = (convItems[i].querySelector('.title') || {}).textContent;
+    if (t) { title = t; break; }
+  }
+  document.getElementById('nameModalTitle').textContent = '重命名会话';
+  document.getElementById('nameInput').value = title;
+  document.getElementById('nameModal').classList.add('show');
+  setTimeout(function(){ document.getElementById('nameInput').focus(); }, 50);
+}
+
+function closeNameModal() {
+  document.getElementById('nameModal').classList.remove('show');
+  nameAction = null;
+  pendingRenameConv = null;
+}
+
+async function submitNameModal() {
+  var value = document.getElementById('nameInput').value.trim();
+  if (!value) { alert('名称不能为空'); return; }
+  var action = nameAction;
+  var id = pendingRenameConv;
+  closeNameModal();
+  if (!action) return;
+  try {
+    if (action === 'create') {
+      var r = await fetch('/api/v1/conversations?user_id=demo&title=' + encodeURIComponent(value), { method: 'POST' });
+      var data = await r.json();
+      switchConversation(data.id, value);
+    } else if (action === 'rename' && id) {
+      await fetch('/api/v1/conversations/' + id + '?title=' + encodeURIComponent(value), { method: 'PUT' });
+      if (currentConvId === id) document.getElementById('convTitle').textContent = value;
+    }
+    loadConversations();
+  } catch(e) { alert('操作失败: ' + e); }
+}
+
+async function deleteConv(id) {
+  var title = '该会话';
+  var convItems = document.getElementById('convList').children;
+  for (var i = 0; i < convItems.length; i++) {
+    var t = (convItems[i].querySelector('.title') || {}).textContent;
+    if (t) { title = t; break; }
+  }
+  pendingDeleteConv = id;
+  document.getElementById('confirmHint').textContent = '确定要删除「' + title + '」吗？此操作不可恢复。';
+  document.getElementById('confirmModal').classList.add('show');
+}
+
+function closeConfirm() {
+  document.getElementById('confirmModal').classList.remove('show');
+  pendingDeleteConv = null;
+}
+
+async function doDeleteConfirmed() {
+  var id = pendingDeleteConv;
+  closeConfirm();
+  if (!id) return;
+  try {
+    await fetch('/api/v1/conversations/' + id, { method: 'DELETE' });
+    if (currentConvId === id) { currentConvId = ''; document.getElementById('convTitle').textContent = ''; }
+    loadConversations();
+  } catch(e) {}
+}
+
+async function clearAll() {
+  if (!confirm('确认清除所有会话?')) return;
+  try {
+    await fetch('/api/v1/conversations?user_id=demo', { method: 'DELETE' });
+    currentConvId = '';
+    document.getElementById('convTitle').textContent = '';
+    document.getElementById('messages').innerHTML = '<div class="message assistant"><div class="bubble">所有会话已清除</div></div>';
+    loadConversations();
+  } catch(e) {}
+}
+
+// ===== 监控面板 =====
+async function refreshMonitor() {
+  try {
+    var r = await fetch('/api/v1/monitor');
+    var d = await r.json();
+    document.getElementById('monProvider').textContent = 'Ollama';
+    document.getElementById('monModel').textContent = d.model || d.provider || '-';
+    document.getElementById('monUrl').textContent = (d.base_url || '-').substring(0, 30);
+    document.getElementById('monCalls').textContent = d.total_calls || 0;
+    document.getElementById('monInput').textContent = d.total_input_tokens || 0;
+    document.getElementById('monOutput').textContent = d.total_output_tokens || 0;
+    document.getElementById('monTotal').textContent = d.total_tokens || 0;
+  } catch(e) {}
+}
+
+// ===== 聊天 =====
+function addMessage(role, content) {
+  var div = document.createElement('div');
+  div.className = 'message ' + role;
+  var bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  if (typeof content === 'object') bubble.innerHTML = formatPlan(content);
+  else bubble.textContent = content;
+  div.appendChild(bubble);
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function formatPlan(plan) {
+  if (!plan || !plan.title) return '<pre style="font-size:12px;max-height:300px;overflow:auto">' + escapeHtml(JSON.stringify(plan, null, 2)) + '</pre>';
+  var h = '<h3>' + escapeHtml(plan.title) + '</h3>';
+  if (plan.destination) h += '<p><strong>目的地:</strong> ' + escapeHtml(plan.destination) + '</p>';
+  if (plan.duration) h += '<p><strong>行程:</strong> ' + escapeHtml(plan.duration) + '</p>';
+  if (plan.summary) h += '<p>' + escapeHtml(plan.summary) + '</p>';
+  if (plan.days && plan.days.length) {
+    h += '<hr><strong>每日行程:</strong>';
+    plan.days.forEach(function(d) {
+      h += '<p><strong>Day ' + escapeHtml(d.day) + (d.date ? ' (' + escapeHtml(d.date) + ')' : '') + ':</strong></p><ul>';
+      (d.activities || []).forEach(function(a) { h += '<li><strong>' + escapeHtml(a.time) + '</strong> ' + escapeHtml(a.activity) + ' @ ' + escapeHtml(a.location || '') + '</li>'; });
+      h += '</ul>';
+    });
+  }
+  if (plan.budget) {
+    h += '<hr><strong>预算:</strong><ul>';
+    var b = plan.budget;
+    if (b.transport) h += '<li>交通: ' + escapeHtml(b.transport) + '元</li>';
+    if (b.hotel) h += '<li>住宿: ' + escapeHtml(b.hotel) + '元</li>';
+    if (b.food) h += '<li>餐饮: ' + escapeHtml(b.food) + '元</li>';
+    if (b.total) h += '<li><strong>总计: ' + escapeHtml(b.total) + '元</strong></li>';
+    h += '</ul>';
+  }
+  if (plan.tips && plan.tips.length) { h += '<hr><strong>注意事项:</strong><ul>'; plan.tips.forEach(function(t) { h += '<li>' + escapeHtml(t) + '</li>'; }); h += '</ul>'; }
+  if (plan.transportations && plan.transportations.length) {
+    h += '<hr><strong>交通:</strong><ul>';
+    plan.transportations.forEach(function(t) { h += '<li>' + escapeHtml(t.type) + ': ' + escapeHtml(t.from) + ' → ' + escapeHtml(t.to) + ' | ' + escapeHtml(t.time||'') + ' | ' + escapeHtml(t.cost||0) + '元</li>'; });
+    h += '</ul>';
+  }
+  return h;
+}
+
+// ===== 图表渲染（数据分析）=====
+function renderChart(chart) {
+  if (!chart || !chart.labels || !chart.labels.length) return '';
+  var max = Math.max.apply(null, chart.values) || 1;
+  var isLine = chart.type === 'line';
+  var h = '<div class="chart-card">';
+  if (chart.title) h += '<div class="chart-title">' + escapeHtml(chart.title) + '</div>';
+  h += '<div class="chart-body">';
+  var total = chart.labels.length;
+  var cell = (100 / total).toFixed(1);
+  if (isLine) {
+    h += '<svg viewBox="0 0 ' + (total * 60) + ' 200" style="width:100%;height:200px;display:block">';
+    chart.values.forEach(function(v, i) {
+      var x = i * 60 + 30, y = 190 - (v / max * 160);
+      var px = (chart.values[i-1] !== undefined) ? ((i-1) * 60 + 30) + ',' + (190 - (chart.values[i-1] / max * 160)) : '';
+      if (px) h += '<line x1="' + px.split(',')[0] + '" y1="' + px.split(',')[1] + '" x2="' + x + '" y2="' + y + '" stroke="#2563eb" stroke-width="2"/>';
+      h += '<circle cx="' + x + '" cy="' + y + '" r="4" fill="#2563eb"/>';
+    });
+    h += '</svg><div class="chart-labels">';
+    chart.labels.forEach(function(l) { h += '<span style="width:' + cell + '%">' + escapeHtml(l) + '</span>'; });
+    h += '</div>';
+  } else {
+    h += '<div class="chart-bars">';
+    chart.values.forEach(function(v, i) {
+      var pct = (v / max * 100).toFixed(0);
+      h += '<div class="chart-col"><div class="chart-bar"><div class="chart-fill" style="height:' + pct + '%"><span class="chart-val">' + v.toLocaleString() + '</span></div></div><div class="chart-col-label">' + escapeHtml(chart.labels[i]) + '</div></div>';
+    });
+    h += '</div>';
+  }
+  h += '</div></div>';
+  return h;
+}
+
+function addChart(charts) {
+  var div = document.createElement('div');
+  div.className = 'message assistant';
+  var bubble = document.createElement('div');
+  bubble.className = 'bubble chart-bubble';
+  bubble.innerHTML = (charts || []).map(renderChart).join('');
+  div.appendChild(bubble);
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function addEvent(type, data) {
+  var now = new Date().toLocaleTimeString();
+  var div = document.createElement('div');
+  div.className = 'event-item';
+  div.innerHTML = '<span class="type">' + type + '</span> <span class="time">' + now + '</span><div class="data">' + safeStringify(data).substring(0, 150) + '</div>';
+  eventLog.appendChild(div);
+  eventLog.scrollTop = eventLog.scrollHeight;
+}
+
+function showModal(missingFields) {
+  var html = '';
+  var seen = {};
+  missingFields.forEach(function(f) {
+    var key = f.tool + ':' + f.param;
+    if (seen[key]) return;
+    seen[key] = true;
+    html += '<div class="field"><label>' + f.param.replace(/_/g, ' ') + '</label>';
+    if (f.description) html += '<div class="field-hint">' + f.description + '</div>';
+    html += '<input type="text" name="' + key + '" placeholder="请输入' + f.param + '"></div>';
+  });
+  document.getElementById('modalFields').innerHTML = html;
+  modal.classList.add('show');
+}
+
+// ==== 澄清式需求确认弹窗（travel 前融合缺参+偏好）====
+function showClarifyModal(questions, round) {
+  pendingClarifyQuestions = questions || [];
+  round = round || (pendingClarifyQuestions[0] && pendingClarifyQuestions[0].round);
+  var isSecondRound = round === 2;
+  document.getElementById('clarifyTitle').textContent = isSecondRound ? '还需要确认' : '确认几个需求';
+  document.getElementById('clarifyHint').textContent =
+    isSecondRound ? '还有几个关键信息想再确认一下' : '为更好地规划，请确认以下问题（可点选建议，或自行输入）';
+  var html = '';
+  pendingClarifyQuestions.forEach(function(q, idx) {
+    var type = q.type || 'option';
+    html += '<div class="clarify-question">';
+    html += '<div class="q-title">' + escapeHtml(q.question) +
+      (q.required === false ? '' : '<span class="q-required">*</span>') + '</div>';
+    if (q.hint) html += '<div class="q-note">' + escapeHtml(q.hint) + '</div>';
+    if (type === 'option' && q.options && q.options.length) {
+      html += '<div class="q-options">';
+      q.options.forEach(function(opt) {
+        html += '<div class="q-option"><label><input type="radio" name="clar_opt_' + idx + '" value="' + escapeHtml(opt) + '"><span>' + escapeHtml(opt) + '</span></label></div>';
+      });
+      html += '</div>';
+      html += '<input class="q-free" id="clar_free_' + idx + '" placeholder="或在此自由输入" autocomplete="off">';
+    } else {
+      var inputType = (type === 'number') ? 'number' : (type === 'date' ? 'date' : 'text');
+      html += '<input class="q-free" id="clar_free_' + idx + '" type="' + inputType + '" placeholder="请输入" autocomplete="off">';
+    }
+    html += '</div>';
+  });
+  document.getElementById('clarifyQuestions').innerHTML = html;
+  clarifyModal.classList.add('show');
+  // 聚焦第一个输入框
+  setTimeout(function() { var f = document.getElementById('clar_free_0'); if (f) f.focus(); }, 50);
+}
+
+function closeClarifyModal() {
+  clarifyModal.classList.remove('show');
+  pendingClarifyQuestions = null;
+  pendingClarifyPayload = null;
+  isProcessing = false; sendBtn.disabled = false; stopBtn.classList.remove('show'); abortCtrl = null;
+}
+
+function submitClarify() {
+  var answers = {};
+  (pendingClarifyQuestions || []).forEach(function(q, idx) {
+    var selected = null;
+    var radios = document.querySelectorAll('input[name="clar_opt_' + idx + '"]:checked');
+    if (radios.length) selected = radios[0].value;
+    var free = document.getElementById('clar_free_' + idx).value.trim();
+    answers[q.id] = free || selected || '';
+  });
+  // 有答案 → 作为 JSON 载荷 resume；无答案 → 取消
+  var any = Object.keys(answers).some(function(k) { return answers[k] !== ''; });
+  clarifyModal.classList.remove('show');
+  pendingClarifyQuestions = null;
+  if (!any) { isProcessing = false; sendBtn.disabled = false; stopBtn.classList.remove('show'); abortCtrl = null; return; }
+  pendingClarifyPayload = JSON.stringify({ answers: answers });
+  sendMessage();
+}
+
+function stopRequest() { if (abortCtrl) { abortCtrl.abort(); abortCtrl = null; } isProcessing = false; sendBtn.disabled = false; stopBtn.classList.remove('show'); userInput.focus(); addMessage('system', '已停止'); }
+
+function closeModal() { modal.classList.remove('show'); isProcessing = false; sendBtn.disabled = false; stopBtn.classList.remove('show'); abortCtrl = null; }
+
+function submitModal() {
+  var inputs = document.querySelectorAll('#modalFields input');
+  var parts = [];
+  inputs.forEach(function(inp) { if (inp.value.trim()) parts.push(inp.getAttribute('name') + '=' + inp.value.trim()); });
+  modal.classList.remove('show');
+  if (parts.length > 0) { userInput.value = '补充参数: ' + parts.join(', '); sendMessage(); }
+  else { isProcessing = false; sendBtn.disabled = false; stopBtn.classList.remove('show'); }
+}
+
+async function sendMessage() {
+  var msg = userInput.value.trim();
+  var isClarifySend = !!pendingClarifyPayload;
+  if (!msg && !isClarifySend) return;
+  if (isProcessing && !isClarifySend) return;
+  var requestMessage = isClarifySend ? pendingClarifyPayload : msg;
+  pendingClarifyPayload = null;
+
+  isProcessing = true; sendBtn.disabled = true; stopBtn.classList.add('show'); abortCtrl = new AbortController();
+  userInput.value = '';
+  // 澄清提交：不显示 JSON 载荷，改用简要气泡
+  if (isClarifySend) { addMessage('assistant', '收到你的补充，正在为你规划行程...'); addMessage('user', '（已确认需求）'); }
+  else { addMessage('user', msg); }
+  addEvent('user_message', { message: requestMessage, resume: pendingResume, is_clarify: isClarifySend });
+
+  try {
+    var resp = await fetch('/api/v1/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: requestMessage, user_id: 'demo', conversation_id: currentConvId, resume: pendingResume }), signal: abortCtrl ? abortCtrl.signal : null,
+    });
+    pendingResume = false;
+    var reader = resp.body.getReader(), decoder = new TextDecoder(), buffer = '', eventType = '';
+
+    while (true) {
+      var result = await reader.read();
+      if (result.done) break;
+      buffer += decoder.decode(result.value, { stream: true });
+      var lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line.startsWith('event: ')) { eventType = line.substring(7).trim(); }
+        else if (line.startsWith('data: ')) {
+          var data = JSON.parse(line.substring(6));
+          addEvent(eventType, data);
+
+          if (eventType === 'intent.result' && data.intent) addMessage('system', '意图: ' + data.intent + ' | 工具: ' + (data.tools||[]).join(', '));
+          else if (eventType === 'param_check.result' && !data.ready) addMessage('system', '参数检查: 缺少 ' + (data.missing||[]).join(', '));
+          else if (eventType === 'param_check.result' && data.ready) addMessage('system', '参数齐全，正在查询...');
+          else if (eventType === 'ask_user') {
+            if (data && data.source === 'clarify') {
+              showClarifyModal(data.questions || [], data.round);
+            } else {
+              addMessage('assistant', data.message);
+              if (data.missing_fields && data.missing_fields.length) showModal(data.missing_fields);
+            }
+          }
+          else if (eventType === 'summarize.message' && data.message) addMessage('assistant', data.message);
+          else if (eventType === 'summarize.chart' && data.charts) addChart(data.charts);
+          else if (eventType === 'done') {
+            if (data.conversation_id) currentConvId = data.conversation_id;
+            if (data.need_input) { pendingResume = true; isProcessing = false; sendBtn.disabled = false; stopBtn.classList.remove('show'); }
+            if (!data.need_input) addMessage('system', '完成 | 耗时: ' + (data.elapsed||'?') + 's | Token: ' + JSON.stringify(data.tokens||{}));
+            refreshMonitor(); loadConversations();
+          }
+        }
+      }
+    }
+  } catch (err) { if (err.name !== 'AbortError') { addMessage('system', '错误: ' + err.message); } isProcessing = false; sendBtn.disabled = false; stopBtn.classList.remove('show'); abortCtrl = null; }
+  if (!modal.classList.contains('show') && !clarifyModal.classList.contains('show')) { isProcessing = false; sendBtn.disabled = false; stopBtn.classList.remove('show'); abortCtrl = null; userInput.focus(); }
+}
+
+function escapeHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function safeStringify(o) { try { return JSON.stringify(o); } catch(e) { return String(o); } }
+
+// ===== 文件管理 =====
+var fileModal = document.getElementById('fileModal');
+var fileList = document.getElementById('fileList');
+
+async function openFileManager() {
+  fileModal.classList.add('show');
+  fileList.innerHTML = '<div class="empty">加载中...</div>';
+  try {
+    var resp = await fetch('/api/v1/travel-plans?user_id=' + (currentConvId ? 'demo' : 'demo'));
+    var plans = await resp.json();
+    if (!plans.length) { fileList.innerHTML = '<div class="empty">暂无生成的文件，先和 Agent 对话生成方案吧</div>'; return; }
+    fileList.innerHTML = '';
+    for (var i = 0; i < plans.length; i++) {
+      var p = plans[i];
+      var div = document.createElement('div');
+      div.className = 'file-item';
+      div.innerHTML = '<div class="file-info"><div class="file-title">' + escapeHtml(p.title || '无标题') + '</div><div class="file-meta">目的地: ' + escapeHtml(p.destination || '未知') + ' | 状态: ' + escapeHtml(p.status) + ' | ' + escapeHtml(p.created_at || '') + '</div></div>'
+        + '<div class="file-actions"><button class="btn-preview" onclick="previewFile(\'' + p.id + '\')">预览</button><button class="btn-delete" onclick="deleteFile(\'' + p.id + '\')">删除</button></div>';
+      fileList.appendChild(div);
+    }
+  } catch(e) { fileList.innerHTML = '<div class="empty">加载失败: ' + e.message + '</div>'; }
+}
+
+async function previewFile(planId) {
+  try {
+    var resp = await fetch('/api/v1/plans/' + planId + '/preview');
+    var data = await resp.json();
+    var bodyHtml = data.html || '<p>无内容</p>';
+    // 用 srcdoc 注入页面 + 严格 CSP，禁止脚本，避免存储型 XSS
+    var src = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
+      + '<meta charset="utf-8"><style>body{font-family:sans-serif;max-width:800px;margin:20px auto;line-height:1.8}</style>'
+      + bodyHtml;
+    var w = window.open('', '_blank', 'width=900,height=700');
+    w.document.open();
+    w.document.write(src);
+    w.document.close();
+  } catch(e) { alert('预览失败: ' + e.message); }
+}
+
+async function deleteFile(planId) {
+  if (!confirm('确定删除这个方案吗？此操作不可恢复。')) return;
+  try {
+    await fetch('/api/v1/travel-plans/' + planId, { method: 'DELETE' });
+    openFileManager(); // 刷新列表
+  } catch(e) { alert('删除失败: ' + e.message); }
+}
+
+function closeFileModal() { fileModal.classList.remove('show'); }
+
+// 初始化
+loadConversations();
+refreshMonitor();
+monitorTimer = setInterval(refreshMonitor, 5000);
+</script>
+</body>
+</html>
+
+
+

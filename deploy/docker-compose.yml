@@ -1,0 +1,104 @@
+# =============================================================
+# Docker 部署编排（本地开发默认值）
+# 口令均支持环境变量覆盖：`docker compose --env-file .docker.env up`
+# 变量清单：AGENT_DATABASE_URL / ERP_DB_USER / ERP_DB_PASSWORD /
+#           POSTGRES_USER / POSTGRES_PASSWORD
+# 生产环境请复制 .docker.env.example 为 .docker.env 并填入真实口令（勿提交 .docker.env）。
+# =============================================================
+version: "3.8"
+
+services:
+  # ==================== Python Agent ====================
+  agent:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: travel_agent
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=${AGENT_DATABASE_URL:-postgresql+asyncpg://agent:agent123@postgres:5432/agent_db}
+      - REDIS_URL=redis://redis:6379/0
+      - ERP_BASE_URL=http://erp:8080
+      - ERP_USE_MOCK=false
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - APP_ENV=production
+      - DEBUG=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  # ==================== MCP Weather Server ====================
+  mcp_weather:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.mcp
+    container_name: mcp_weather
+    ports:
+      - "8100:8100"
+    restart: unless-stopped
+
+  # ==================== Java ERP ====================
+  erp:
+    build:
+      context: ../../erp_backend
+      dockerfile: Dockerfile
+    container_name: erp_backend
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/erp_db
+      - SPRING_DATASOURCE_USERNAME=${ERP_DB_USER:-erp}
+      - SPRING_DATASOURCE_PASSWORD=${ERP_DB_PASSWORD:-erp123}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ==================== PostgreSQL ====================
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ==================== Redis ====================
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  # ==================== Nginx ====================
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - agent
+      - erp
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

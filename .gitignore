@@ -1,0 +1,51 @@
+# ---- 环境变量与密钥（禁止上传） ----
+.env
+.env.local
+.env.*.local
+.docker.env
+.docker.env.*.local
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+secrets/
+credentials.json
+service-account.json
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.idea/
+.vscode/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# ---- 运行时数据 / 缓存 ----
+*.sqlite3
+*.db
+*.log
+logs/
+data/
+
+# ---- 编辑器本地工作文档（含本机绝对路径，不提交） ----
+.trae/
+.idea/
+.vscode/
+*.iml
+docs/
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
